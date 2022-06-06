@@ -1,0 +1,174 @@
+Sub Format_Data()
+    'declaring variables used in macro
+    Dim NameArray As Variant
+    Dim NameCount As Integer
+    Dim UniqueName As Variant
+    Dim i, j, m, n As Integer
+    Dim RemainingAccountCount As Integer
+    Dim TotalAccountCount As Integer
+    Dim PercentAccount As Variant
+    Dim UniqueNameArray As New Collection, Name
+    Dim UniqueNameRow As Integer
+    Dim NameComp As Variant
+    Dim CurrentName As Variant
+    Dim TotalRemainingAccounts As Variant
+    Dim TotalTotalAccounts As Variant
+    Dim TotalPercents As Variant
+    Dim PathCSV As Variant
+    Dim Sheet1 As Variant
+    Dim Sheet2 As Variant
+    Dim FolderNameArray1 As Variant
+    Dim FolderNameArray2 As Variant
+    Dim StageNameArray As Variant
+    Dim FolderNameCount1 As Variant
+    Dim FolderNameCount2 As Variant
+    Dim FolderComp As Variant
+    Dim CurrentFolder As Variant
+    
+    'assign sheet variables to switch between them easily
+    Sheet1 = ActiveSheet.Name
+    Sheet2 = "File Name"
+    
+    'make sure CSV file and Excel workbook are saved in same folder
+    PathCSV = ThisWorkbook.Path & "\File Name.csv"
+
+    'deletes query if it already exists (allows consecutive data imports to function as expected)
+    On Error Resume Next
+    ActiveWorkbook.Queries("File Name").Delete
+    On Error GoTo 0
+
+    'creates query for importing CSV file data
+    ActiveWorkbook.Queries.Add Name:="File Name", Formula:= _
+        "let" & Chr(13) & "" & Chr(10) & "    Source = Csv.Document(File.Contents(""" & PathCSV & """),[Delimiter="","", Columns=4, Encoding=65001, QuoteStyle=QuoteStyle.None])," & Chr(13) & "" & Chr(10) & "    #""Promoted Headers"" = Table.PromoteHeaders(Source, [PromoteAllScalars=true])," & Chr(13) & "" & Chr(10) & "    #""Changed Type"" = Table.TransformColumnTypes(#""Promoted Headers"",{{""E Folder Name"", t" & _
+        "ype text}, {""E Subject"", type text}, {""E Stage Name"", type text}, {"""", Int64.Type}})" & Chr(13) & "" & Chr(10) & "in" & Chr(13) & "" & Chr(10) & "    #""Changed Type"""
+    ActiveWorkbook.Worksheets.Add 'adds new sheet to workbook
+
+    'adds data from CSV file to new sheet
+    With ActiveSheet.ListObjects.Add(SourceType:=0, Source:= _
+        "OLEDB;Provider=Microsoft.Mashup.OleDb.1;Data Source=$Workbook$;Location=""File Name"";Extended Properties=""""" _
+        , Destination:=Range("$A$1")).QueryTable
+        .CommandType = xlCmdSql
+        .CommandText = Array("SELECT * FROM [File Name]")
+        .RowNumbers = False
+        .FillAdjacentFormulas = False
+        .PreserveFormatting = True
+        .RefreshOnFileOpen = False
+        .BackgroundQuery = True
+        .RefreshStyle = xlInsertDeleteCells
+        .SavePassword = False
+        .SaveData = True
+        .AdjustColumnWidth = True
+        .RefreshPeriod = 0
+        .PreserveColumnInfo = True
+        .ListObject.DisplayName = "File_Name"
+        .Refresh BackgroundQuery:=False
+    End With
+
+    'changes new sheet name to match file name
+    ActiveSheet.Name = "File Name"
+    
+    'defines folder arrays and number of items in each
+    FolderNameArray1 = Worksheets(Sheet1).Range("C2:C1000").Value
+    FolderNameCount1 = Worksheets(Sheet1).Range("C2:C1000").Count
+    FolderNameArray2 = Worksheets(Sheet2).Range("A2:A1000").Value
+    FolderNameCount2 = Worksheets(Sheet2).Range("A2:A1000").Count
+    StageNameArray = Worksheets(Sheet2).Range("C2:C1000").Value
+    'StageNameCount not needed because it equals FolderNameCount2
+    
+
+    'main loop to compare folder names and check if stage name is "Predetermined Name"
+    For Each FolderName In FolderNameArray1
+        'nested loop to iterate through the folder names in the temp sheet
+        For x = 1 To FolderNameCount2
+            CurrentFolder = FolderNameArray2(x, 1)        
+            FolderComp = StrComp(FolderName, CurrentFolder)
+            If FolderComp = 0 And StageNameArray(x, 1) = "Predetermined Name" Then
+                'changes cell background color in Account column to light green (aka excel color code 43)
+                Worksheets(Sheet1).Cells(x + 1, 2).Interior.ColorIndex = 43
+            End If
+        Next
+    Next
+    
+    'changes the active sheet to the main sheet using Sheet1 variable
+    Sheets(Sheet1).Select
+        
+    'defines name array and number of processor names in the array
+    NameArray = Range("A2:A1000").Value
+    NameCount = Range("A2:A1000").Count
+    
+    On Error Resume Next
+            
+    'determines how many unique names there are and adds them to a new array
+    For Each Name In NameArray
+        UniqueNameArray.Add Name, Name
+    Next
+    
+    'sets the starting row number for the accounts table
+    UniqueNameRow = 3
+    
+    'table maker loop to count remaining/total accounts for each processor
+    For Each UniqueName In UniqueNameArray
+        'set counts back to zero for each unique processor
+        RemainingAccountCount = 0
+        TotalAccountCount = 0
+        
+        'nested loop that counts remaining accounts based on processor name and background color
+        For i = 1 To NameCount
+            CurrentName = Cells(i + 1, 1)
+            NameComp = StrComp(CurrentName, UniqueName)
+            If NameComp = 0 And Cells(i + 1, 2).Interior.ColorIndex <> 43 Then
+                'if processor names match and background color is not light green, then add 1 to the Remaining Accounts value
+                RemainingAccountCount = RemainingAccountCount + 1
+            End If
+        Next
+        
+        'nested loop that counts total accounts based on name only
+        For j = 1 To NameCount
+            CurrentName = Cells(j + 1, 1)
+            NameComp = StrComp(CurrentName, UniqueName)
+            If NameComp = 0 Then
+                'if names match, then add 1 to the Total Accounts Value
+                TotalAccountCount = TotalAccountCount + 1
+            End If
+        Next
+        
+        'calculates account remaining percentage
+        PercentAccount = RemainingAccountCount / TotalAccountCount
+        
+        'adds newly obtained values to table
+        Cells(UniqueNameRow, 8) = UniqueName.Value
+        Cells(UniqueNameRow, 9) = RemainingAccountCount
+        Cells(UniqueNameRow, 10) = TotalAccountCount
+        Cells(UniqueNameRow, 11) = PercentAccount
+        Cells(UniqueNameRow, 11).NumberFormat = "0.00%"
+        
+        'storing sums in variables for the grand total amounts
+        TotalRemainingAccounts = TotalRemainingAccounts + RemainingAccountCount
+        TotalTotalAccounts = TotalTotalAccounts + TotalAccountCount
+        TotalPercents = TotalPercents + PercentAccount
+        
+        'moves to the next row in the table
+        UniqueNameRow = UniqueNameRow + 1
+        
+    Next
+    
+    'averages the total percentage of accounts remaining per person
+    TotalPercents = TotalPercents / (UniqueNameArray.Count)
+    
+    'updates the grand totals (bottom row of table)
+    Cells(UniqueNameArray.Count + 3, 8) = "Totals"
+    Cells(UniqueNameArray.Count + 3, 9) = TotalRemainingAccounts
+    Cells(UniqueNameArray.Count + 3, 10) = TotalTotalAccounts
+    Cells(UniqueNameArray.Count + 3, 11) = TotalPercents
+    Cells(UniqueNameArray.Count + 3, 11).NumberFormat = "0.00%"
+    
+    'deletes imported data sheet (prevents consecutive run errors)
+    Application.DisplayAlerts = False
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name = "File Name" Then
+          ws.Delete
+        End If
+    Next ws
+    Application.DisplayAlerts = True
+    
+End Sub
